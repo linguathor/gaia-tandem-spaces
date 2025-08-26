@@ -8,7 +8,8 @@
     "start:background": "powershell -Command \"Start-Process -FilePath node -ArgumentList index.js -WorkingDirectory . -WindowStyle Hidden\"",
     "test:signed": "node test/send_signed_event.js",
     "test:validation": "powershell -Command \"$body = '{\\\"event\\\":\\\"endpoint.url_validation\\\",\\\"payload\\\":{\\\"plainToken\\\":\\\"test-token-123\\\"}}'; Invoke-RestMethod -Uri 'http://localhost:3000/api/zoom-webhook' -Method POST -Body $body -ContentType 'application/json'\"",
-    "test:openai": "node test/test_openai.js"
+    "test:openai": "node test/test_openai.js",
+    "test:flow": "node test/test_full_flow.js"
   },
   "author": "",
   "license": "MIT",
