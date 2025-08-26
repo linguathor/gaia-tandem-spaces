@@ -1,6 +1,6 @@
-# Zoom Feedback Backend (minimal)
+# Zoom Feedback Backend - "Spaces" Meeting Analysis
 
-Simple Express server that verifies Zoom webhook signatures and handles the URL validation challenge.
+Advanced Express server that processes Zoom webhook events and generates AI-powered feedback focusing on the "spaces" between what people say and what they mean in meetings.
 
 ## Quick start (PowerShell):
 
@@ -9,46 +9,76 @@ Simple Express server that verifies Zoom webhook signatures and handles the URL 
 Set-Location .\zoom-feedback-backend
 npm install
 
-# Copy .env.example to .env and set ZOOM_WEBHOOK_SECRET_TOKEN
+# Copy .env.example to .env and configure your API keys
 Copy-Item .env.example .env
-# Edit .env and replace 'your_secret_token_here' with your actual Zoom webhook secret
+# Edit .env and set:
+# - ZOOM_WEBHOOK_SECRET_TOKEN (from your Zoom App settings)
+# - OPENAI_API_KEY (from OpenAI dashboard: https://platform.openai.com/api-keys)
 
 # Start server in background:
 Start-Process -FilePath "node" -ArgumentList ".\index.js" -WorkingDirectory "." -WindowStyle Hidden
 
 # Or start in foreground:
 node .\index.js
-
-# Test endpoints:
-npm run test:signed        # Test with signed event
-npm run test:validation    # Test URL validation
 ```
 
-## Testing manually:
+## Testing:
 
 ```powershell
-# Health check
-Invoke-WebRequest -Uri "http://localhost:3000/" -UseBasicParsing
+# Test webhook endpoints
+npm run test:signed        # Test with signed event
+npm run test:validation    # Test URL validation
 
-# Test URL validation (what Zoom sends first)
-$body = '{"event":"endpoint.url_validation","payload":{"plainToken":"test-token-123"}}'
-Invoke-RestMethod -Uri "http://localhost:3000/api/zoom-webhook" -Method POST -Body $body -ContentType "application/json"
-
-# Test signed event (simulates real Zoom webhook)
-node .\test\send_signed_event.js
+# Test OpenAI integration
+npm run test:openai        # Test feedback generation (requires OpenAI API key)
 ```
 
-## For production/Zoom integration:
+## Environment Variables:
 
-If you want to expose locally to Zoom for real verification, use ngrok:
+- `ZOOM_WEBHOOK_SECRET_TOKEN`: Your Zoom webhook secret token
+- `OPENAI_API_KEY`: Your OpenAI API key (starts with sk-...)
+- `PORT`: Server port (default: 3000)
+
+## Features:
+
+### ✅ Zoom Integration
+- Webhook verification and URL validation
+- Participant tracking across meeting lifecycle  
+- Recording and transcript completion handling
+
+### ✅ AI-Powered Analysis
+- **"Spaces" Focus**: Analyzes gaps between spoken words and intended meaning
+- **Communication Patterns**: Identifies unclear messaging, interruptions, engagement levels
+- **Hidden Dynamics**: Uncovers unspoken concerns, power dynamics, emotional undertones
+- **Collaboration Assessment**: Rates team effectiveness and decision-making processes
+- **Actionable Insights**: Provides specific, implementable recommendations
+
+### 🚧 Coming Next
+- Zoom API integration for transcript download
+- Email/Telegram delivery system
+- Database storage for persistent data
+
+## Production Deployment:
+
+For Vercel deployment:
+1. Push to GitHub (`.env` is already in `.gitignore`)
+2. Import project in Vercel dashboard
+3. Set environment variables in Vercel project settings
+4. Use webhook URL: `https://your-project.vercel.app/api/zoom-webhook`
+
+## Event Flow:
+
+1. **Meeting starts** → Participants tracked via webhook events
+2. **Recording completes** → System logs recording files availability  
+3. **Transcript ready** → **Main trigger** for analysis:
+   - Downloads transcript from Zoom
+   - Generates AI feedback using OpenAI GPT-4
+   - Delivers personalized insights to participants
+   - Cleans up meeting data
+
+## Testing with ngrok (for local Zoom integration):
 
 ```powershell
 ngrok http 3000
+# Use: https://your-ngrok-id.ngrok.io/api/zoom-webhook
 ```
-
-Then in Zoom set the Event notification endpoint to: `https://<ngrok-host>.ngrok.io/api/zoom-webhook`
-
-## Notes:
-- Do NOT commit your real `.env` file. Use the hosting provider's environment variable settings for production (Vercel, Heroku, etc.).
-- The server responds to both URL validation challenges and signed webhook events.
-- All webhook events except URL validation require valid HMAC signature verification.
