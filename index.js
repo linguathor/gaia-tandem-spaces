@@ -3,12 +3,21 @@ require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
 const OpenAI = require('openai');
+const axios = require('axios');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 if (!process.env.ZOOM_WEBHOOK_SECRET_TOKEN) {
   console.warn('WARNING: ZOOM_WEBHOOK_SECRET_TOKEN is not set. For local testing, copy .env.example to .env and set the token.');
+}
+
+if (!process.env.ZOOM_CLIENT_ID || process.env.ZOOM_CLIENT_ID === 'your_zoom_client_id_here') {
+  console.warn('WARNING: ZOOM_CLIENT_ID is not set. Add your Zoom app Client ID to .env for API access.');
+}
+
+if (!process.env.ZOOM_CLIENT_SECRET || process.env.ZOOM_CLIENT_SECRET === 'your_zoom_client_secret_here') {
+  console.warn('WARNING: ZOOM_CLIENT_SECRET is not set. Add your Zoom app Client Secret to .env for API access.');
 }
 
 if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
@@ -119,6 +128,168 @@ app.listen(port, '0.0.0.0', () => {
 });
 
 // =============================================================================
+// ZOOM API INTEGRATION
+// =============================================================================
+
+/**
+ * Cache for Zoom access token (in production, use Redis or database)
+ */
+let zoomAccessTokenCache = {
+  token: null,
+  expiresAt: 0
+};
+
+/**
+ * Get Zoom access token using Server-to-Server OAuth
+ */
+async function getZoomAccessToken() {
+  // Check if we have a valid cached token
+  if (zoomAccessTokenCache.token && Date.now() < zoomAccessTokenCache.expiresAt) {
+    console.log('Using cached Zoom access token');
+    return zoomAccessTokenCache.token;
+  }
+
+  if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
+    throw new Error('Zoom API credentials not configured. Set ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET in .env');
+  }
+
+  try {
+    console.log('Requesting new Zoom access token...');
+    
+    const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
+    
+    const response = await axios.post('https://zoom.us/oauth/token', 
+      'grant_type=client_credentials',
+      {
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+
+    const { access_token, expires_in } = response.data;
+    
+    // Cache the token with 5 minute buffer before expiry
+    zoomAccessTokenCache = {
+      token: access_token,
+      expiresAt: Date.now() + ((expires_in - 300) * 1000)
+    };
+
+    console.log('Successfully obtained Zoom access token');
+    return access_token;
+
+  } catch (error) {
+    console.error('Error getting Zoom access token:', error.response?.data || error.message);
+    throw new Error(`Failed to get Zoom access token: ${error.response?.data?.error || error.message}`);
+  }
+}
+
+/**
+ * Get recording files for a meeting from Zoom API
+ */
+async function getZoomRecordings(meetingUuid) {
+  try {
+    const accessToken = await getZoomAccessToken();
+    
+    console.log(`Fetching recordings for meeting ${meetingUuid}...`);
+    
+    // URL encode the meeting UUID (required for Zoom API)
+    const encodedUuid = encodeURIComponent(meetingUuid);
+    
+    const response = await axios.get(`https://api.zoom.us/v2/meetings/${encodedUuid}/recordings`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    return response.data;
+
+  } catch (error) {
+    console.error('Error fetching Zoom recordings:', error.response?.data || error.message);
+    throw new Error(`Failed to fetch recordings: ${error.response?.data?.message || error.message}`);
+  }
+}
+
+/**
+ * Download transcript content from Zoom
+ */
+async function downloadZoomTranscript(downloadUrl) {
+  try {
+    const accessToken = await getZoomAccessToken();
+    
+    console.log('Downloading transcript from Zoom...');
+    
+    const response = await axios.get(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    // Parse VTT format transcript
+    const vttContent = response.data;
+    const transcript = parseVTTToText(vttContent);
+    
+    console.log(`Successfully downloaded transcript (${transcript.length} characters)`);
+    return transcript;
+
+  } catch (error) {
+    console.error('Error downloading transcript:', error.response?.data || error.message);
+    throw new Error(`Failed to download transcript: ${error.message}`);
+  }
+}
+
+/**
+ * Parse VTT (WebVTT) format transcript to plain text
+ */
+function parseVTTToText(vttContent) {
+  if (typeof vttContent !== 'string') {
+    console.log('VTT content is not a string, converting...');
+    vttContent = String(vttContent);
+  }
+
+  const lines = vttContent.split('\n');
+  const textLines = [];
+  let currentSpeaker = '';
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Skip VTT headers, timing lines, and empty lines
+    if (line === '' || line.startsWith('WEBVTT') || line.includes('-->') || /^\d+$/.test(line)) {
+      continue;
+    }
+    
+    // Extract speaker name if present (format: "Speaker Name:")
+    if (line.includes(':') && !line.includes('-->')) {
+      const colonIndex = line.indexOf(':');
+      const potentialSpeaker = line.substring(0, colonIndex).trim();
+      const potentialText = line.substring(colonIndex + 1).trim();
+      
+      // If the text after colon looks like spoken content, treat as speaker
+      if (potentialText.length > 0 && potentialSpeaker.length < 50) {
+        currentSpeaker = potentialSpeaker;
+        if (potentialText) {
+          textLines.push(`${currentSpeaker}: ${potentialText}`);
+        }
+      } else {
+        textLines.push(line);
+      }
+    } else {
+      // Regular transcript line
+      if (currentSpeaker) {
+        textLines.push(`${currentSpeaker}: ${line}`);
+      } else {
+        textLines.push(line);
+      }
+    }
+  }
+  
+  return textLines.join('\n');
+}
+
+// =============================================================================
 // ZOOM EVENT HANDLERS
 // =============================================================================
 
@@ -191,37 +362,75 @@ async function handleRecordingCompleted(payload) {
  */
 async function handleTranscriptCompleted(payload) {
   const meetingUuid = payload.object?.uuid;
-  const transcriptFile = payload.object?.recording_files?.find(f => f.file_type === 'transcript');
   
-  if (!transcriptFile) {
-    console.log('No transcript file found in payload');
+  if (!meetingUuid) {
+    console.log('No meeting UUID found in transcript completion payload');
     return;
   }
   
-  console.log(`Transcript ready for meeting ${meetingUuid}`);
-  console.log(`Transcript download URL: ${transcriptFile.download_url}`);
+  console.log(`Transcript completed for meeting ${meetingUuid}`);
   
   try {
     // Step 1: Get participant list for this meeting
     const participants = meetingParticipants.get(meetingUuid);
     if (!participants || participants.size === 0) {
-      console.log(`No participants found for meeting ${meetingUuid}`);
-      return;
+      console.log(`No participants found for meeting ${meetingUuid}, proceeding anyway`);
     }
     
-    console.log(`Processing feedback for ${participants.size} participants`);
+    const participantList = participants ? Array.from(participants) : [];
+    console.log(`Processing feedback for ${participantList.length} participants`);
     
-    // Step 2: Download transcript
-    const transcript = await downloadTranscript(transcriptFile.download_url);
+    // Step 2: Get recording files from Zoom API
+    let transcriptDownloadUrl = null;
     
-    // Step 3: Generate feedback using OpenAI
-    const feedback = await generateFeedback(transcript, Array.from(participants));
+    if (process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET) {
+      try {
+        console.log('Fetching recording files from Zoom API...');
+        const recordingsData = await getZoomRecordings(meetingUuid);
+        
+        // Find the transcript file
+        const transcriptFile = recordingsData.recording_files?.find(file => 
+          file.file_type === 'transcript' || file.file_type === 'TRANSCRIPT'
+        );
+        
+        if (transcriptFile) {
+          transcriptDownloadUrl = transcriptFile.download_url;
+          console.log('Found transcript file in Zoom API response');
+        } else {
+          console.log('No transcript file found in Zoom API response');
+          console.log('Available files:', recordingsData.recording_files?.map(f => f.file_type));
+        }
+      } catch (error) {
+        console.error('Error fetching recordings from Zoom API:', error.message);
+      }
+    }
     
-    // Step 4: Send feedback to participants
-    await sendFeedbackToParticipants(feedback, Array.from(participants));
+    // Fallback: check payload for transcript URL (from webhook)
+    if (!transcriptDownloadUrl) {
+      const transcriptFileFromPayload = payload.object?.recording_files?.find(f => f.file_type === 'transcript');
+      if (transcriptFileFromPayload) {
+        transcriptDownloadUrl = transcriptFileFromPayload.download_url;
+        console.log('Using transcript URL from webhook payload');
+      }
+    }
+    
+    if (!transcriptDownloadUrl) {
+      console.log('No transcript download URL available, using mock transcript');
+    }
+    
+    // Step 3: Download transcript
+    const transcript = await downloadTranscript(transcriptDownloadUrl || 'mock://transcript');
+    
+    // Step 4: Generate feedback using OpenAI
+    const feedback = await generateFeedback(transcript, participantList);
+    
+    // Step 5: Send feedback to participants
+    await sendFeedbackToParticipants(feedback, participantList);
     
     // Clean up participant data
-    meetingParticipants.delete(meetingUuid);
+    if (participants) {
+      meetingParticipants.delete(meetingUuid);
+    }
     
   } catch (error) {
     console.error('Error processing transcript:', error);
@@ -229,19 +438,28 @@ async function handleTranscriptCompleted(payload) {
 }
 
 /**
- * Download transcript from Zoom (requires access token)
+ * Download transcript from Zoom (using real API)
  */
 async function downloadTranscript(downloadUrl) {
-  console.log('TODO: Download transcript from Zoom API');
-  console.log('URL:', downloadUrl);
-  
-  // TODO: Implement actual download with Zoom access token
-  // const response = await fetch(downloadUrl, {
-  //   headers: { 'Authorization': `Bearer ${zoomAccessToken}` }
-  // });
-  // const transcript = await response.text();
-  
-  return 'Sample transcript content...';
+  if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
+    console.log('Zoom API credentials not configured, using mock transcript');
+    return `Mock transcript content for testing purposes.
+    
+Speaker 1: Good morning everyone, thanks for joining today's meeting.
+Speaker 2: Hi there, glad to be here. I've prepared the items we discussed.
+Speaker 1: Great, let's go through them one by one.
+Speaker 2: The first item is about improving our communication processes.
+Speaker 1: That's exactly what we need to focus on.
+Speaker 2: I agree, there are some gaps we need to address.`;
+  }
+
+  try {
+    const transcript = await downloadZoomTranscript(downloadUrl);
+    return transcript;
+  } catch (error) {
+    console.error('Failed to download real transcript, using fallback:', error.message);
+    return `Failed to download transcript: ${error.message}`;
+  }
 }
 
 /**

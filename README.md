@@ -29,15 +29,26 @@ node .\index.js
 npm run test:signed        # Test with signed event
 npm run test:validation    # Test URL validation
 
-# Test OpenAI integration
+# Test integrations
 npm run test:openai        # Test feedback generation (requires OpenAI API key)
+npm run test:zoom          # Test Zoom API access (requires Zoom credentials)
+npm run test:flow          # Test complete webhook flow
 ```
 
 ## Environment Variables:
 
 - `ZOOM_WEBHOOK_SECRET_TOKEN`: Your Zoom webhook secret token
+- `ZOOM_CLIENT_ID`: Your Zoom app Client ID (for API access)
+- `ZOOM_CLIENT_SECRET`: Your Zoom app Client Secret (for API access)  
 - `OPENAI_API_KEY`: Your OpenAI API key (starts with sk-...)
 - `PORT`: Server port (default: 3000)
+
+## Getting Zoom API Credentials:
+
+1. Go to [Zoom Marketplace](https://marketplace.zoom.us/develop/create)
+2. Create a **Server-to-Server OAuth** app
+3. Get your **Client ID** and **Client Secret** from the app credentials
+4. Add these to your `.env` file
 
 ## Features:
 
@@ -45,6 +56,9 @@ npm run test:openai        # Test feedback generation (requires OpenAI API key)
 - Webhook verification and URL validation
 - Participant tracking across meeting lifecycle  
 - Recording and transcript completion handling
+- **Server-to-Server OAuth** for API authentication
+- **Automatic transcript download** from Zoom recordings
+- **VTT format parsing** to extract clean text
 
 ### ✅ AI-Powered Analysis
 - **"Spaces" Focus**: Analyzes gaps between spoken words and intended meaning
@@ -54,9 +68,9 @@ npm run test:openai        # Test feedback generation (requires OpenAI API key)
 - **Actionable Insights**: Provides specific, implementable recommendations
 
 ### 🚧 Coming Next
-- Zoom API integration for transcript download
 - Email/Telegram delivery system
 - Database storage for persistent data
+- Enhanced error handling and retry logic
 
 ## Production Deployment:
 
