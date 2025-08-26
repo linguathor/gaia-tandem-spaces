@@ -7,12 +7,14 @@
     "start": "node index.js",
     "start:background": "powershell -Command \"Start-Process -FilePath node -ArgumentList index.js -WorkingDirectory . -WindowStyle Hidden\"",
     "test:signed": "node test/send_signed_event.js",
-    "test:validation": "powershell -Command \"$body = '{\\\"event\\\":\\\"endpoint.url_validation\\\",\\\"payload\\\":{\\\"plainToken\\\":\\\"test-token-123\\\"}}'; Invoke-RestMethod -Uri 'http://localhost:3000/api/zoom-webhook' -Method POST -Body $body -ContentType 'application/json'\""
+    "test:validation": "powershell -Command \"$body = '{\\\"event\\\":\\\"endpoint.url_validation\\\",\\\"payload\\\":{\\\"plainToken\\\":\\\"test-token-123\\\"}}'; Invoke-RestMethod -Uri 'http://localhost:3000/api/zoom-webhook' -Method POST -Body $body -ContentType 'application/json'\"",
+    "test:openai": "node test/test_openai.js"
   },
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "dotenv": "^16.0.3"
+    "openai": "^5.15.0"
   }
 }

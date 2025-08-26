@@ -2,6 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
+const OpenAI = require('openai');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -9,6 +10,15 @@ const port = process.env.PORT || 3000;
 if (!process.env.ZOOM_WEBHOOK_SECRET_TOKEN) {
   console.warn('WARNING: ZOOM_WEBHOOK_SECRET_TOKEN is not set. For local testing, copy .env.example to .env and set the token.');
 }
+
+if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+  console.warn('WARNING: OPENAI_API_KEY is not set. Add your OpenAI API key to .env for feedback generation.');
+}
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // Use Express's built-in JSON parser, but with a verify function
 // This captures the raw request body required for signature verification
@@ -238,24 +248,107 @@ async function downloadTranscript(downloadUrl) {
  * Generate feedback using OpenAI API
  */
 async function generateFeedback(transcript, participants) {
-  console.log('TODO: Generate feedback using OpenAI');
+  console.log('Generating feedback using OpenAI...');
   console.log('Transcript length:', transcript.length);
   console.log('Participants:', participants.map(p => p.name).join(', '));
   
-  // TODO: Implement OpenAI API call
-  // const response = await openai.chat.completions.create({
-  //   model: "gpt-4",
-  //   messages: [
-  //     { role: "system", content: "You are a meeting feedback analyst..." },
-  //     { role: "user", content: `Analyze this transcript: ${transcript}` }
-  //   ]
-  // });
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('OpenAI API key not configured, returning mock feedback');
+    return {
+      summary: 'Mock meeting summary - OpenAI API key not configured',
+      insights: ['Please configure OPENAI_API_KEY in your environment'],
+      actionItems: ['Set up OpenAI API key', 'Redeploy the application']
+    };
+  }
   
-  return {
-    summary: 'Sample meeting summary...',
-    insights: ['Insight 1', 'Insight 2'],
-    actionItems: ['Action 1', 'Action 2']
-  };
+  try {
+    const participantNames = participants.map(p => p.name).join(', ');
+    
+    const systemPrompt = `You are an expert meeting analyst specializing in "Spaces" - the gaps between what people say and what they really mean in professional meetings. Your role is to provide actionable feedback that helps participants improve their communication and collaboration.
+
+Analyze the meeting transcript and provide insights in these key areas:
+
+1. **Communication Patterns**: How effectively did participants communicate? Look for:
+   - Unclear messaging or assumptions
+   - Speaking over each other or interruptions
+   - Engagement levels and participation balance
+   - Use of jargon that might exclude others
+
+2. **Hidden Dynamics**: Identify the "spaces" between words:
+   - Unspoken concerns or hesitations
+   - Power dynamics affecting participation
+   - Emotional undertones (frustration, enthusiasm, uncertainty)
+   - What wasn't said but was probably thought
+
+3. **Collaboration Effectiveness**: Assess how well the team worked together:
+   - Decision-making process and clarity
+   - How well ideas were built upon
+   - Conflict resolution and handling of disagreements
+   - Inclusivity and psychological safety
+
+4. **Actionable Improvements**: Provide specific, implementable suggestions:
+   - Communication techniques for better clarity
+   - Process improvements for future meetings
+   - Individual feedback for key participants
+   - Ways to address any underlying tensions
+
+Format your response as JSON with these fields:
+- summary: A brief overview of the meeting's effectiveness
+- communicationInsights: Array of observations about communication patterns
+- hiddenDynamics: Array of insights about unspoken elements
+- collaborationScore: Number from 1-10 rating team collaboration
+- actionItems: Array of specific, actionable recommendations
+- individualFeedback: Object with participant names as keys and personalized feedback as values
+
+Keep insights constructive and actionable. Focus on helping the team improve their "spaces" - the quality of interaction beyond just the words spoken.`;
+
+    const userPrompt = `Please analyze this meeting transcript involving participants: ${participantNames}
+
+Transcript:
+${transcript}
+
+Provide your analysis in the requested JSON format, focusing on the "spaces" between what was said and what was meant.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+
+    const content = response.choices[0].message.content;
+    
+    try {
+      // Try to parse as JSON
+      const feedback = JSON.parse(content);
+      console.log('Successfully generated feedback with OpenAI');
+      return feedback;
+    } catch (parseError) {
+      console.log('Failed to parse OpenAI response as JSON, returning structured fallback');
+      return {
+        summary: content.substring(0, 200) + '...',
+        communicationInsights: ['OpenAI response was not in expected JSON format'],
+        hiddenDynamics: ['Please check the system prompt configuration'],
+        collaborationScore: 7,
+        actionItems: ['Review and fix the feedback generation prompt'],
+        individualFeedback: {}
+      };
+    }
+    
+  } catch (error) {
+    console.error('Error calling OpenAI API:', error);
+    return {
+      summary: 'Error generating feedback with OpenAI',
+      communicationInsights: [`API Error: ${error.message}`],
+      hiddenDynamics: ['Could not analyze meeting dynamics due to API error'],
+      collaborationScore: 0,
+      actionItems: ['Fix OpenAI API configuration', 'Check API key and billing'],
+      individualFeedback: {}
+    };
+  }
 }
 
 /**
