@@ -18,6 +18,13 @@ const payload = {
       start_time: '2024-01-15T10:00:00Z',
       recording_files: [
         {
+          id: 'audio-file-id',
+          file_type: 'audio_only',
+          file_size: 15728640, // ~15MB
+          download_url: 'https://api.zoom.us/v2/recordings/test-recording-id/audio_only',
+          status: 'completed'
+        },
+        {
           id: 'transcript-file-id',
           file_type: 'transcript',
           file_size: 1024,

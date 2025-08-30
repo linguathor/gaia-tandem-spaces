@@ -213,31 +213,114 @@ async function getZoomRecordings(meetingUuid) {
 }
 
 /**
- * Download transcript content from Zoom
+ * Download audio file from Zoom for Whisper transcription
  */
-async function downloadZoomTranscript(downloadUrl) {
+async function downloadZoomAudio(downloadUrl) {
   try {
     const accessToken = await getZoomAccessToken();
     
-    console.log('Downloading transcript from Zoom...');
+    console.log('Downloading audio file from Zoom...');
     
     const response = await axios.get(downloadUrl, {
       headers: {
         'Authorization': `Bearer ${accessToken}`
-      }
+      },
+      responseType: 'arraybuffer' // Important for binary audio data
     });
 
-    // Parse VTT format transcript
-    const vttContent = response.data;
-    const transcript = parseVTTToText(vttContent);
-    
-    console.log(`Successfully downloaded transcript (${transcript.length} characters)`);
-    return transcript;
+    console.log(`Successfully downloaded audio file (${response.data.byteLength} bytes)`);
+    return response.data;
 
   } catch (error) {
-    console.error('Error downloading transcript:', error.response?.data || error.message);
-    throw new Error(`Failed to download transcript: ${error.message}`);
+    console.error('Error downloading audio:', error.response?.data || error.message);
+    throw new Error(`Failed to download audio: ${error.message}`);
   }
+}
+
+/**
+ * Transcribe audio using OpenAI Whisper API with speaker hints
+ */
+async function transcribeWithWhisper(audioBuffer, participantList = []) {
+  try {
+    console.log('Transcribing audio with OpenAI Whisper...');
+    
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+      throw new Error('OpenAI API key not configured');
+    }
+
+    // Check file size (Whisper has 25MB limit)
+    const maxSize = 25 * 1024 * 1024; // 25MB in bytes
+    if (audioBuffer.byteLength > maxSize) {
+      console.warn(`Audio file is ${(audioBuffer.byteLength / 1024 / 1024).toFixed(1)}MB, exceeding Whisper's 25MB limit`);
+      // TODO: Implement audio chunking for large files
+      throw new Error('Audio file too large for Whisper API (>25MB). Audio chunking not yet implemented.');
+    }
+
+    // Create form data for Whisper API
+    const FormData = require('form-data');
+    const form = new FormData();
+    
+    // Add audio file
+    form.append('file', audioBuffer, {
+      filename: 'meeting_audio.m4a',
+      contentType: 'audio/m4a'
+    });
+    
+    // Configure Whisper for best results
+    form.append('model', 'whisper-1');
+    form.append('language', 'en'); // Can be made configurable
+    form.append('response_format', 'verbose_json'); // Get timestamps and confidence
+    
+    // Add speaker hints if we have participant names
+    if (participantList.length > 0) {
+      const speakerHints = participantList.map(p => p.name).join(', ');
+      form.append('prompt', `This is a business meeting with participants: ${speakerHints}. Please identify speakers clearly.`);
+    }
+
+    console.log(`Sending ${(audioBuffer.byteLength / 1024 / 1024).toFixed(1)}MB audio to Whisper API...`);
+    
+    const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        ...form.getHeaders()
+      },
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
+    });
+
+    const transcriptionData = response.data;
+    
+    // Format the response for our use case
+    let formattedTranscript = '';
+    
+    if (transcriptionData.segments) {
+      // Use detailed segments with timestamps
+      formattedTranscript = transcriptionData.segments.map(segment => {
+        const timestamp = formatTimestamp(segment.start);
+        const text = segment.text.trim();
+        return `[${timestamp}] ${text}`;
+      }).join('\n');
+    } else {
+      // Fallback to simple text
+      formattedTranscript = transcriptionData.text || '';
+    }
+
+    console.log(`Whisper transcription completed: ${formattedTranscript.length} characters`);
+    return formattedTranscript;
+
+  } catch (error) {
+    console.error('Error with Whisper transcription:', error.response?.data || error.message);
+    throw new Error(`Whisper transcription failed: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
+/**
+ * Format seconds to MM:SS timestamp
+ */
+function formatTimestamp(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 /**
@@ -380,24 +463,26 @@ async function handleTranscriptCompleted(payload) {
     const participantList = participants ? Array.from(participants) : [];
     console.log(`Processing feedback for ${participantList.length} participants`);
     
-    // Step 2: Get recording files from Zoom API
-    let transcriptDownloadUrl = null;
+    // Step 2: Get recording files from Zoom API and look for audio files
+    let audioDownloadUrl = null;
     
     if (process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET) {
       try {
         console.log('Fetching recording files from Zoom API...');
         const recordingsData = await getZoomRecordings(meetingUuid);
         
-        // Find the transcript file
-        const transcriptFile = recordingsData.recording_files?.find(file => 
-          file.file_type === 'transcript' || file.file_type === 'TRANSCRIPT'
+        // Look for audio files (prefer audio_only, fallback to shared_screen_with_speaker_view)
+        const audioFile = recordingsData.recording_files?.find(file => 
+          file.file_type === 'audio_only' || file.file_type === 'AUDIO_ONLY'
+        ) || recordingsData.recording_files?.find(file => 
+          file.file_type === 'shared_screen_with_speaker_view'
         );
         
-        if (transcriptFile) {
-          transcriptDownloadUrl = transcriptFile.download_url;
-          console.log('Found transcript file in Zoom API response');
+        if (audioFile) {
+          audioDownloadUrl = audioFile.download_url;
+          console.log(`Found audio file: ${audioFile.file_type}`);
         } else {
-          console.log('No transcript file found in Zoom API response');
+          console.log('No suitable audio file found in Zoom API response');
           console.log('Available files:', recordingsData.recording_files?.map(f => f.file_type));
         }
       } catch (error) {
@@ -405,21 +490,23 @@ async function handleTranscriptCompleted(payload) {
       }
     }
     
-    // Fallback: check payload for transcript URL (from webhook)
-    if (!transcriptDownloadUrl) {
-      const transcriptFileFromPayload = payload.object?.recording_files?.find(f => f.file_type === 'transcript');
-      if (transcriptFileFromPayload) {
-        transcriptDownloadUrl = transcriptFileFromPayload.download_url;
-        console.log('Using transcript URL from webhook payload');
+    // Fallback: check payload for audio URL (from webhook)
+    if (!audioDownloadUrl) {
+      const audioFileFromPayload = payload.object?.recording_files?.find(f => 
+        f.file_type === 'audio_only' || f.file_type === 'shared_screen_with_speaker_view'
+      );
+      if (audioFileFromPayload) {
+        audioDownloadUrl = audioFileFromPayload.download_url;
+        console.log(`Using audio URL from webhook payload: ${audioFileFromPayload.file_type}`);
       }
     }
     
-    if (!transcriptDownloadUrl) {
-      console.log('No transcript download URL available, using mock transcript');
+    if (!audioDownloadUrl) {
+      console.log('No audio download URL available, using mock transcript');
     }
     
-    // Step 3: Download transcript
-    const transcript = await downloadTranscript(transcriptDownloadUrl || 'mock://transcript');
+    // Step 3: Download and transcribe audio
+    const transcript = await downloadAndTranscribeAudio(audioDownloadUrl || 'mock://audio', participantList);
     
     // Step 4: Generate feedback using OpenAI
     const feedback = await generateFeedback(transcript, participantList);
@@ -438,27 +525,44 @@ async function handleTranscriptCompleted(payload) {
 }
 
 /**
- * Download transcript from Zoom (using real API)
+ * Download and transcribe audio from Zoom (using Whisper API)
  */
-async function downloadTranscript(downloadUrl) {
+async function downloadAndTranscribeAudio(audioUrl, participantList = []) {
   if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
     console.log('Zoom API credentials not configured, using mock transcript');
     return `Mock transcript content for testing purposes.
     
-Speaker 1: Good morning everyone, thanks for joining today's meeting.
-Speaker 2: Hi there, glad to be here. I've prepared the items we discussed.
-Speaker 1: Great, let's go through them one by one.
-Speaker 2: The first item is about improving our communication processes.
-Speaker 1: That's exactly what we need to focus on.
-Speaker 2: I agree, there are some gaps we need to address.`;
+[00:00] Speaker 1: Good morning everyone, thanks for joining today's meeting.
+[00:15] Speaker 2: Hi there, glad to be here. I've prepared the items we discussed.
+[00:30] Speaker 1: Great, let's go through them one by one.
+[00:45] Speaker 2: The first item is about improving our communication processes.
+[01:00] Speaker 1: That's exactly what we need to focus on.
+[01:15] Speaker 2: I agree, there are some gaps we need to address.`;
+  }
+
+  if (audioUrl === 'mock://audio') {
+    console.log('Using mock audio URL, returning mock transcript');
+    return await downloadAndTranscribeAudio(null, participantList);
   }
 
   try {
-    const transcript = await downloadZoomTranscript(downloadUrl);
+    // Download audio file from Zoom
+    console.log('Starting audio download and transcription process...');
+    const audioBuffer = await downloadZoomAudio(audioUrl);
+    
+    // Transcribe with Whisper
+    const transcript = await transcribeWithWhisper(audioBuffer, participantList);
+    
     return transcript;
   } catch (error) {
-    console.error('Failed to download real transcript, using fallback:', error.message);
-    return `Failed to download transcript: ${error.message}`;
+    console.error('Failed to download and transcribe audio, using fallback:', error.message);
+    
+    // Fallback to mock transcript if anything fails
+    return `Failed to transcribe audio: ${error.message}
+
+[00:00] System: Audio transcription failed, using fallback content.
+[00:15] Speaker 1: This is a placeholder transcript due to transcription failure.
+[00:30] Speaker 2: Please check the logs for details about the transcription error.`;
   }
 }
 
@@ -528,7 +632,7 @@ ${transcript}
 Provide your analysis in the requested JSON format, focusing on the "spaces" between what was said and what was meant.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
