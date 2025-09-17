@@ -144,11 +144,16 @@ let zoomAccessTokenCache = {
 /**
  * Get Zoom access token using Server-to-Server OAuth
  */
-async function getZoomAccessToken() {
-  // Check if we have a valid cached token
-  if (zoomAccessTokenCache.token && Date.now() < zoomAccessTokenCache.expiresAt) {
+async function getZoomAccessToken(forceRefresh = false) {
+  // Force refresh or check if we have a valid cached token
+  if (!forceRefresh && zoomAccessTokenCache.token && Date.now() < zoomAccessTokenCache.expiresAt) {
     console.log('Using cached Zoom access token');
     return zoomAccessTokenCache.token;
+  }
+
+  if (forceRefresh) {
+    console.log('Force refreshing Zoom access token (clearing cache)');
+    zoomAccessTokenCache = { token: null, expiresAt: 0 };
   }
 
   if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
@@ -157,8 +162,14 @@ async function getZoomAccessToken() {
 
   try {
     console.log('Requesting new Zoom access token with client_credentials for cloud recording access');
+    console.log('Using Client ID:', process.env.ZOOM_CLIENT_ID);
+    console.log('Client Secret length:', process.env.ZOOM_CLIENT_SECRET?.length || 0);
     
     const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
+    
+    console.log('Making OAuth request to:', 'https://zoom.us/oauth/token');
+    console.log('Request body:', 'grant_type=client_credentials');
+    console.log('Authorization header:', `Basic ${credentials.substring(0, 20)}...`);
     
     const response = await axios.post(
       'https://zoom.us/oauth/token',
@@ -178,6 +189,9 @@ async function getZoomAccessToken() {
       expiresIn: expires_in, 
       scope: scope 
     });
+    
+    console.log('Raw response data keys:', Object.keys(response.data));
+    console.log('Full scope string:', scope);
     
     // Cache the token with 5 minute buffer before expiry
     zoomAccessTokenCache = {
@@ -479,8 +493,8 @@ async function handleTranscriptCompleted(payload) {
     const passcodeSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
     finalDownloadUrl = `${finalDownloadUrl}${passcodeSeparator}pwd=${passcode}`;
     
-    // Get the access token
-    const accessToken = await getZoomAccessToken();
+    // Get the access token (force fresh token)
+    const accessToken = await getZoomAccessToken(true);
     
     // Robustly append the access token
     const tokenSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
