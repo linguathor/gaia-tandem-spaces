@@ -467,23 +467,9 @@ async function handleTranscriptCompleted(payload) {
     const downloadUrl = transcriptFile.download_url;
     console.log('Found transcript download URL.');
 
-    // 2. Get a Zoom Access Token for authentication
-    const accessToken = await getZoomAccessToken();
-
-    // 3. Download the transcript file content
-    console.log('Downloading transcript file...');
-    console.log('Original download URL:', downloadUrl);
-    
-    // Robustly append the access token, handling URLs that already have a '?'
-    const separator = downloadUrl.includes('?') ? '&' : '?';
-    const downloadUrlWithToken = `${downloadUrl}${separator}access_token=${accessToken}`;
-    
-    console.log('Separator used:', separator);
-    console.log('Final download URL:', downloadUrlWithToken);
-    console.log('Access token length:', accessToken.length);
-
-    // Make the request to the new URL without any special headers
-    const response = await axios.get(downloadUrlWithToken);
+    // 3. Download the transcript file directly (New Theory)
+    console.log('Downloading transcript file directly without a token...');
+    const response = await axios.get(downloadUrl); // No token, no special URL!
     
     const transcriptText = response.data; // This is the raw VTT content
     console.log('Transcript downloaded successfully!');
