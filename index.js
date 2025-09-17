@@ -467,23 +467,28 @@ async function handleTranscriptCompleted(payload) {
     const downloadUrl = transcriptFile.download_url;
     console.log('Found transcript download URL.');
 
-    // 3. Download the transcript file (with passcode)
-    console.log('Downloading transcript file with passcode...');
+    // 3. Download the transcript file (with token AND passcode)
+    console.log('Downloading transcript file with token and passcode...');
     
-    // Get the passcode from the payload
+    // Get the passcode and the original download URL
     const passcode = payload.object.recording_play_passcode;
+    let finalDownloadUrl = transcriptFile.download_url; // Start with the base URL
     
-    // Robustly append the passcode, handling URLs that already have a '?'
-    const separator = downloadUrl.includes('?') ? '&' : '?';
-    const encodedPasscode = encodeURIComponent(passcode);
-    const finalDownloadUrl = `${downloadUrl}${separator}passcode=${encodedPasscode}`;
+    // Robustly append the passcode
+    const passcodeSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
+    finalDownloadUrl = `${finalDownloadUrl}${passcodeSeparator}pwd=${passcode}`;
     
-    console.log('Final download URL:', finalDownloadUrl.replace(/passcode=[^&]*/, 'passcode=***'));
+    // Get the access token
+    const accessToken = await getZoomAccessToken();
     
-    // Make the request to the final URL
+    // Robustly append the access token
+    const tokenSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
+    finalDownloadUrl = `${finalDownloadUrl}${tokenSeparator}access_token=${accessToken}`;
+    
+    // Make the request to the final, fully-formed URL
     const response = await axios.get(finalDownloadUrl);
     
-    const transcriptText = response.data; // This should now be the VTT content
+    const transcriptText = response.data;
     console.log('Transcript downloaded successfully!');
     console.log('--- Transcript Text ---');
     console.log(transcriptText.substring(0, 200) + '...');
