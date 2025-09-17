@@ -466,9 +466,15 @@ async function handleTranscriptCompleted(payload) {
 
     // 3. Download the transcript file content
     console.log('Downloading transcript file...');
+    console.log('Original download URL:', downloadUrl);
+    
     // Robustly append the access token, handling URLs that already have a '?'
     const separator = downloadUrl.includes('?') ? '&' : '?';
     const downloadUrlWithToken = `${downloadUrl}${separator}access_token=${accessToken}`;
+    
+    console.log('Separator used:', separator);
+    console.log('Final download URL:', downloadUrlWithToken);
+    console.log('Access token length:', accessToken.length);
 
     // Make the request to the new URL without any special headers
     const response = await axios.get(downloadUrlWithToken);
@@ -490,6 +496,9 @@ async function handleTranscriptCompleted(payload) {
 
   } catch (error) {
     console.error('Error processing transcript:', error.message);
+    console.error('Error status:', error.response?.status);
+    console.error('Error data:', error.response?.data);
+    console.error('Error headers:', error.response?.headers);
   }
 }
 
