@@ -156,12 +156,12 @@ async function getZoomAccessToken() {
   }
 
   try {
-    console.log('Requesting new Zoom access token...');
+    console.log('Requesting new Zoom access token with scope: recording:read meeting:read');
     
     const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
     
     const response = await axios.post('https://zoom.us/oauth/token', 
-      'grant_type=client_credentials&scope=recording:read',
+      'grant_type=client_credentials&scope=recording:read%20meeting:read',
       {
         headers: {
           'Authorization': `Basic ${credentials}`,
