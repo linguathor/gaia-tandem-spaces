@@ -156,14 +156,15 @@ async function getZoomAccessToken(forceRefresh = false) {
     zoomAccessTokenCache = { token: null, expiresAt: 0 };
   }
 
-  if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
-    throw new Error('Zoom API credentials not configured. Set ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET in .env');
+  if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET || !process.env.ZOOM_ACCOUNT_ID) {
+    throw new Error('Zoom API credentials not configured. Set ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, and ZOOM_ACCOUNT_ID in .env');
   }
 
   try {
     console.log('=== ZOOM TOKEN DEBUG START ===');
-    console.log('Requesting new Zoom access token with client_credentials for cloud recording access');
+    console.log('Requesting new Zoom access token with account_credentials for cloud recording access');
     console.log('Using Client ID:', process.env.ZOOM_CLIENT_ID);
+    console.log('Using Account ID:', process.env.ZOOM_ACCOUNT_ID);
     console.log('Client Secret length:', process.env.ZOOM_CLIENT_SECRET?.length || 0);
     console.log('Client Secret first 10 chars:', process.env.ZOOM_CLIENT_SECRET?.substring(0, 10) + '...');
     console.log('Process env keys containing ZOOM:', Object.keys(process.env).filter(k => k.includes('ZOOM')));
@@ -173,19 +174,17 @@ async function getZoomAccessToken(forceRefresh = false) {
     
     const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
     
-    console.log('Making OAuth request to:', 'https://zoom.us/oauth/token');
-    console.log('Request body:', 'grant_type=client_credentials');
+    const url = `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${encodeURIComponent(process.env.ZOOM_ACCOUNT_ID)}`;
+    console.log('Making OAuth request to:', url);
     console.log('Authorization header first 30 chars:', `Basic ${credentials.substring(0, 30)}...`);
     console.log('Full credentials length:', credentials.length);
     
     // Log request details
     const requestConfig = {
-      url: 'https://zoom.us/oauth/token',
+      url: url,
       method: 'POST',
-      data: 'grant_type=client_credentials',
       headers: {
         'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'Node.js Zoom Webhook Server',
         'Accept': 'application/json'
       }
@@ -200,12 +199,11 @@ async function getZoomAccessToken(forceRefresh = false) {
     });
     
     const response = await axios.post(
-      'https://zoom.us/oauth/token',
-      'grant_type=client_credentials',
+      url,
+      {},
       {
         headers: {
           'Authorization': `Basic ${credentials}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': 'Node.js Zoom Webhook Server',
           'Accept': 'application/json'
         },
