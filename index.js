@@ -151,18 +151,18 @@ async function getZoomAccessToken() {
     return zoomAccessTokenCache.token;
   }
 
-  if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET || !process.env.ZOOM_ACCOUNT_ID) {
-    throw new Error('Zoom API credentials not configured. Set ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, and ZOOM_ACCOUNT_ID in .env');
+  if (!process.env.ZOOM_CLIENT_ID || !process.env.ZOOM_CLIENT_SECRET) {
+    throw new Error('Zoom API credentials not configured. Set ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET in .env');
   }
 
   try {
-    console.log('Requesting new Zoom access token with account credentials for data access scopes');
+    console.log('Requesting new Zoom access token with client_credentials for cloud recording access');
     
     const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
     
     const response = await axios.post(
-      `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${process.env.ZOOM_ACCOUNT_ID}`,
-      {},
+      'https://zoom.us/oauth/token',
+      'grant_type=client_credentials',
       {
         headers: {
           'Authorization': `Basic ${credentials}`,
