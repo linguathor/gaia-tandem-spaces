@@ -161,15 +161,43 @@ async function getZoomAccessToken(forceRefresh = false) {
   }
 
   try {
+    console.log('=== ZOOM TOKEN DEBUG START ===');
     console.log('Requesting new Zoom access token with client_credentials for cloud recording access');
     console.log('Using Client ID:', process.env.ZOOM_CLIENT_ID);
     console.log('Client Secret length:', process.env.ZOOM_CLIENT_SECRET?.length || 0);
+    console.log('Client Secret first 10 chars:', process.env.ZOOM_CLIENT_SECRET?.substring(0, 10) + '...');
+    console.log('Process env keys containing ZOOM:', Object.keys(process.env).filter(k => k.includes('ZOOM')));
+    console.log('Current timestamp:', new Date().toISOString());
+    console.log('Node.js version:', process.version);
+    console.log('Environment:', process.env.NODE_ENV || 'undefined');
     
     const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
     
     console.log('Making OAuth request to:', 'https://zoom.us/oauth/token');
     console.log('Request body:', 'grant_type=client_credentials');
-    console.log('Authorization header:', `Basic ${credentials.substring(0, 20)}...`);
+    console.log('Authorization header first 30 chars:', `Basic ${credentials.substring(0, 30)}...`);
+    console.log('Full credentials length:', credentials.length);
+    
+    // Log request details
+    const requestConfig = {
+      url: 'https://zoom.us/oauth/token',
+      method: 'POST',
+      data: 'grant_type=client_credentials',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Node.js Zoom Webhook Server',
+        'Accept': 'application/json'
+      }
+    };
+    
+    console.log('Full request config (headers masked):', {
+      ...requestConfig,
+      headers: {
+        ...requestConfig.headers,
+        'Authorization': 'Basic [MASKED]'
+      }
+    });
     
     const response = await axios.post(
       'https://zoom.us/oauth/token',
@@ -177,21 +205,45 @@ async function getZoomAccessToken(forceRefresh = false) {
       {
         headers: {
           'Authorization': `Basic ${credentials}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Node.js Zoom Webhook Server',
+          'Accept': 'application/json'
+        },
+        timeout: 10000,
+        validateStatus: function (status) {
+          console.log('Response status code:', status);
+          return status >= 200 && status < 300;
         }
       }
     );
 
-    const { access_token, expires_in, scope } = response.data;
+    console.log('Response received!');
+    console.log('Response status:', response.status);
+    console.log('Response headers:', JSON.stringify(response.headers, null, 2));
+    console.log('Response data type:', typeof response.data);
+    console.log('Response data keys:', Object.keys(response.data || {}));
+
+    const { access_token, expires_in, scope, token_type } = response.data;
     
-    console.log('Zoom token response:', { 
-      hasToken: !!access_token, 
-      expiresIn: expires_in, 
-      scope: scope 
-    });
-    
-    console.log('Raw response data keys:', Object.keys(response.data));
+    console.log('=== TOKEN DETAILS ===');
+    console.log('Access token present:', !!access_token);
+    console.log('Access token length:', access_token?.length || 0);
+    console.log('Access token first 20 chars:', access_token?.substring(0, 20) + '...');
+    console.log('Token type:', token_type);
+    console.log('Expires in seconds:', expires_in);
+    console.log('Expires at:', new Date(Date.now() + (expires_in * 1000)).toISOString());
+    console.log('=== SCOPE ANALYSIS ===');
+    console.log('Full scope string length:', scope?.length || 0);
     console.log('Full scope string:', scope);
+    console.log('Scope contains "cloud_recording":', scope?.includes('cloud_recording') || false);
+    console.log('Scope contains "marketplace":', scope?.includes('marketplace') || false);
+    console.log('Scope contains "recording:read":', scope?.includes('recording:read') || false);
+    console.log('Individual scopes:', scope?.split(' ') || []);
+    console.log('Number of scopes:', scope?.split(' ')?.length || 0);
+    
+    console.log('=== FULL RESPONSE DATA ===');
+    console.log('Raw response:', JSON.stringify(response.data, null, 2));
+    console.log('=== ZOOM TOKEN DEBUG END ===');
     
     // Cache the token with 5 minute buffer before expiry
     zoomAccessTokenCache = {
@@ -203,6 +255,34 @@ async function getZoomAccessToken(forceRefresh = false) {
     return access_token;
 
   } catch (error) {
+    console.error('=== ZOOM TOKEN ERROR DEBUG ===');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error stack:', error.stack);
+    
+    if (error.response) {
+      console.error('HTTP Response Error Details:');
+      console.error('Status:', error.response.status);
+      console.error('Status text:', error.response.statusText);
+      console.error('Headers:', JSON.stringify(error.response.headers, null, 2));
+      console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      console.error('Response data type:', typeof error.response.data);
+    } else if (error.request) {
+      console.error('HTTP Request Error Details:');
+      console.error('Request config:', JSON.stringify({
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: { ...error.config?.headers, Authorization: '[MASKED]' },
+        data: error.config?.data,
+        timeout: error.config?.timeout
+      }, null, 2));
+      console.error('No response received');
+    } else {
+      console.error('Configuration or other error');
+    }
+    
+    console.error('=== END ZOOM TOKEN ERROR DEBUG ===');
     console.error('Error getting Zoom access token:', error.response?.data || error.message);
     throw new Error(`Failed to get Zoom access token: ${error.response?.data?.error || error.message}`);
   }
@@ -468,6 +548,17 @@ async function handleRecordingCompleted(payload) {
  */
 async function handleTranscriptCompleted(payload) {
   try {
+    console.log('=== TRANSCRIPT PROCESSING DEBUG START ===');
+    console.log('Payload keys:', Object.keys(payload));
+    console.log('Object keys:', Object.keys(payload.object || {}));
+    console.log('Meeting UUID:', payload.object?.uuid);
+    console.log('Meeting ID:', payload.object?.id);
+    console.log('Account ID:', payload.object?.account_id);
+    console.log('Recording files count:', payload.object?.recording_files?.length || 0);
+    console.log('Has recording_play_passcode:', !!payload.object?.recording_play_passcode);
+    console.log('Passcode length:', payload.object?.recording_play_passcode?.length || 0);
+    console.log('=== TRANSCRIPT PROCESSING DEBUG END ===');
+    
     console.log('Transcript is ready. Starting download process...');
     
     // 1. Find the VTT transcript file in the payload
@@ -494,16 +585,54 @@ async function handleTranscriptCompleted(payload) {
     finalDownloadUrl = `${finalDownloadUrl}${passcodeSeparator}pwd=${passcode}`;
     
     // Get the access token (force fresh token)
+    console.log('=== GETTING ACCESS TOKEN ===');
     const accessToken = await getZoomAccessToken(true);
+    console.log('Received access token length:', accessToken?.length || 0);
+    console.log('Access token first 20 chars:', accessToken?.substring(0, 20) + '...');
     
     // Robustly append the access token
     const tokenSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
     finalDownloadUrl = `${finalDownloadUrl}${tokenSeparator}access_token=${accessToken}`;
     
+    console.log('=== DOWNLOAD URL CONSTRUCTION ===');
+    console.log('Original download URL:', transcriptFile.download_url.substring(0, 100) + '...');
+    console.log('Passcode separator:', passcodeSeparator);
+    console.log('Token separator:', tokenSeparator);
+    console.log('Final URL length:', finalDownloadUrl.length);
+    console.log('Final URL (masked):', finalDownloadUrl.replace(/pwd=[^&]*/, 'pwd=***').replace(/access_token=[^&]*/, 'access_token=***'));
+    
     // Make the request to the final, fully-formed URL
-    const response = await axios.get(finalDownloadUrl);
+    console.log('=== MAKING DOWNLOAD REQUEST ===');
+    console.log('Request URL length:', finalDownloadUrl.length);
+    console.log('Request timestamp:', new Date().toISOString());
+    
+    const response = await axios.get(finalDownloadUrl, {
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Node.js Zoom Webhook Server',
+        'Accept': 'text/vtt, text/plain, */*'
+      },
+      validateStatus: function (status) {
+        console.log('Download response status:', status);
+        return status >= 200 && status < 400;
+      }
+    });
     
     const transcriptText = response.data;
+    console.log('=== DOWNLOAD RESPONSE ANALYSIS ===');
+    console.log('Response status:', response.status);
+    console.log('Response headers keys:', Object.keys(response.headers || {}));
+    console.log('Response content-type:', response.headers?.['content-type']);
+    console.log('Response data type:', typeof transcriptText);
+    console.log('Response data length:', transcriptText?.length || 0);
+    console.log('Response is string:', typeof transcriptText === 'string');
+    console.log('Response starts with WEBVTT:', transcriptText?.startsWith?.('WEBVTT') || false);
+    console.log('Response starts with HTML:', transcriptText?.startsWith?.('<!') || false);
+    console.log('Response contains "passcode":', transcriptText?.includes?.('passcode') || false);
+    console.log('First 200 chars:', transcriptText?.substring(0, 200));
+    console.log('Last 200 chars:', transcriptText?.substring(-200));
+    console.log('=== END DOWNLOAD RESPONSE ANALYSIS ===');
+    
     console.log('Transcript downloaded successfully!');
     console.log('--- Transcript Text ---');
     console.log(transcriptText.substring(0, 200) + '...');
@@ -519,6 +648,23 @@ async function handleTranscriptCompleted(payload) {
     await sendFeedbackToParticipants(feedback, participants);
 
   } catch (error) {
+    console.error('=== TRANSCRIPT PROCESSING ERROR DEBUG ===');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error stack first 500 chars:', error.stack?.substring(0, 500));
+    
+    if (error.response) {
+      console.error('HTTP Response Error Details:');
+      console.error('Status:', error.response.status);
+      console.error('Status text:', error.response.statusText);
+      console.error('Headers:', JSON.stringify(error.response.headers, null, 2));
+      console.error('Data type:', typeof error.response.data);
+      console.error('Data length:', error.response.data?.length || 0);
+      console.error('Data preview:', JSON.stringify(error.response.data)?.substring(0, 500));
+    }
+    console.error('=== END TRANSCRIPT PROCESSING ERROR DEBUG ===');
+    
     console.error('Error processing transcript:', error.message);
     console.error('Error status:', error.response?.status);
     console.error('Error data:', error.response?.data);
