@@ -161,7 +161,7 @@ async function getZoomAccessToken() {
     const credentials = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
     
     const response = await axios.post('https://zoom.us/oauth/token', 
-      'grant_type=client_credentials',
+      'grant_type=client_credentials&scope=recording:read',
       {
         headers: {
           'Authorization': `Basic ${credentials}`,
@@ -170,7 +170,13 @@ async function getZoomAccessToken() {
       }
     );
 
-    const { access_token, expires_in } = response.data;
+    const { access_token, expires_in, scope } = response.data;
+    
+    console.log('Zoom token response:', { 
+      hasToken: !!access_token, 
+      expiresIn: expires_in, 
+      scope: scope 
+    });
     
     // Cache the token with 5 minute buffer before expiry
     zoomAccessTokenCache = {
