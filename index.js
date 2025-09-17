@@ -464,11 +464,11 @@ async function handleTranscriptCompleted(payload) {
 
     // 3. Download the transcript file content
     console.log('Downloading transcript file...');
-    const response = await axios.get(downloadUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
+    // Append the access token as a query parameter to the download URL
+    const downloadUrlWithToken = `${downloadUrl}?access_token=${accessToken}`;
+
+    // Make the request to the new URL without any special headers
+    const response = await axios.get(downloadUrlWithToken);
     
     const transcriptText = response.data; // This is the raw VTT content
     console.log('Transcript downloaded successfully!');
