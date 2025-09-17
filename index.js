@@ -184,7 +184,7 @@ async function getZoomAccessToken() {
       expiresAt: Date.now() + ((expires_in - 300) * 1000)
     };
 
-    console.log('Successfully obtained Zoom access token');
+    console.log('Successfully obtained Zoom access token with scope:', scope);
     return access_token;
 
   } catch (error) {
