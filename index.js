@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const OpenAI = require('openai');
 const axios = require('axios');
 
+// Force Vercel redeploy - 2025-09-17
+
 const app = express();
 const port = process.env.PORT || 3000;
 
