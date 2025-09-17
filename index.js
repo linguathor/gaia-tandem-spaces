@@ -441,86 +441,52 @@ async function handleRecordingCompleted(payload) {
 }
 
 /**
- * Handle transcript completion - this is the main trigger for feedback generation
+ * Handle transcript completion - download transcript and generate feedback
  */
 async function handleTranscriptCompleted(payload) {
-  const meetingUuid = payload.object?.uuid;
-  
-  if (!meetingUuid) {
-    console.log('No meeting UUID found in transcript completion payload');
-    return;
-  }
-  
-  console.log(`Transcript completed for meeting ${meetingUuid}`);
-  
   try {
-    // Step 1: Get participant list for this meeting
-    const participants = meetingParticipants.get(meetingUuid);
-    if (!participants || participants.size === 0) {
-      console.log(`No participants found for meeting ${meetingUuid}, proceeding anyway`);
+    console.log('Transcript is ready. Starting download process...');
+    
+    // 1. Find the VTT transcript file in the payload
+    const recordingFiles = payload.object.recording_files;
+    const transcriptFile = recordingFiles.find(file => file.file_type === 'TRANSCRIPT');
+
+    if (!transcriptFile) {
+      console.log('Error: Transcript (VTT) file not found in webhook payload.');
+      return;
     }
     
-    const participantList = participants ? Array.from(participants) : [];
-    console.log(`Processing feedback for ${participantList.length} participants`);
-    
-    // Step 2: Get recording files from Zoom API and look for audio files
-    let audioDownloadUrl = null;
-    
-    if (process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET) {
-      try {
-        console.log('Fetching recording files from Zoom API...');
-        const recordingsData = await getZoomRecordings(meetingUuid);
-        
-        // Look for audio files (prefer audio_only, fallback to shared_screen_with_speaker_view)
-        const audioFile = recordingsData.recording_files?.find(file => 
-          file.file_type === 'audio_only' || file.file_type === 'AUDIO_ONLY'
-        ) || recordingsData.recording_files?.find(file => 
-          file.file_type === 'shared_screen_with_speaker_view'
-        );
-        
-        if (audioFile) {
-          audioDownloadUrl = audioFile.download_url;
-          console.log(`Found audio file: ${audioFile.file_type}`);
-        } else {
-          console.log('No suitable audio file found in Zoom API response');
-          console.log('Available files:', recordingsData.recording_files?.map(f => f.file_type));
-        }
-      } catch (error) {
-        console.error('Error fetching recordings from Zoom API:', error.message);
+    const downloadUrl = transcriptFile.download_url;
+    console.log('Found transcript download URL.');
+
+    // 2. Get a Zoom Access Token for authentication
+    const accessToken = await getZoomAccessToken();
+
+    // 3. Download the transcript file content
+    console.log('Downloading transcript file...');
+    const response = await axios.get(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
       }
-    }
+    });
     
-    // Fallback: check payload for audio URL (from webhook)
-    if (!audioDownloadUrl) {
-      const audioFileFromPayload = payload.object?.recording_files?.find(f => 
-        f.file_type === 'audio_only' || f.file_type === 'shared_screen_with_speaker_view'
-      );
-      if (audioFileFromPayload) {
-        audioDownloadUrl = audioFileFromPayload.download_url;
-        console.log(`Using audio URL from webhook payload: ${audioFileFromPayload.file_type}`);
-      }
-    }
+    const transcriptText = response.data; // This is the raw VTT content
+    console.log('Transcript downloaded successfully!');
+    console.log('--- Transcript Text ---');
+    console.log(transcriptText.substring(0, 200) + '...'); // Log the first 200 characters
+
+    // 4. Get participants from payload
+    const participants = payload.object.participants || [];
+    console.log(`Processing feedback for ${participants.length} participants`);
+
+    // 5. Generate feedback using OpenAI
+    const feedback = await generateFeedback(transcriptText, participants);
     
-    if (!audioDownloadUrl) {
-      console.log('No audio download URL available, using mock transcript');
-    }
-    
-    // Step 3: Download and transcribe audio
-    const transcript = await downloadAndTranscribeAudio(audioDownloadUrl || 'mock://audio', participantList);
-    
-    // Step 4: Generate feedback using OpenAI
-    const feedback = await generateFeedback(transcript, participantList);
-    
-    // Step 5: Send feedback to participants
-    await sendFeedbackToParticipants(feedback, participantList);
-    
-    // Clean up participant data
-    if (participants) {
-      meetingParticipants.delete(meetingUuid);
-    }
-    
+    // 6. Send feedback to participants
+    await sendFeedbackToParticipants(feedback, participants);
+
   } catch (error) {
-    console.error('Error processing transcript:', error);
+    console.error('Error processing transcript:', error.message);
   }
 }
 
