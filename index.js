@@ -466,8 +466,9 @@ async function handleTranscriptCompleted(payload) {
 
     // 3. Download the transcript file content
     console.log('Downloading transcript file...');
-    // Append the access token as a query parameter to the download URL
-    const downloadUrlWithToken = `${downloadUrl}?access_token=${accessToken}`;
+    // Robustly append the access token, handling URLs that already have a '?'
+    const separator = downloadUrl.includes('?') ? '&' : '?';
+    const downloadUrlWithToken = `${downloadUrl}${separator}access_token=${accessToken}`;
 
     // Make the request to the new URL without any special headers
     const response = await axios.get(downloadUrlWithToken);
