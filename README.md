@@ -29,7 +29,8 @@ node .\index.js
 npm run test:signed        # Test with signed event
 npm run test:validation    # Test URL validation
 
-# Test integrations
+# Test Whisper transcription integration (requires OpenAI key)
+npm run test:whisper       # Test Whisper API connectivity
 npm run test:openai        # Test feedback generation (requires OpenAI API key)
 npm run test:zoom          # Test Zoom API access (requires Zoom credentials)
 npm run test:flow          # Test complete webhook flow
@@ -40,7 +41,8 @@ npm run test:flow          # Test complete webhook flow
 - `ZOOM_WEBHOOK_SECRET_TOKEN`: Your Zoom webhook secret token
 - `ZOOM_CLIENT_ID`: Your Zoom app Client ID (for API access)
 - `ZOOM_CLIENT_SECRET`: Your Zoom app Client Secret (for API access)  
-- `OPENAI_API_KEY`: Your OpenAI API key (starts with sk-...)
+- `OPENAI_API_KEY`: Your OpenAI API key (starts with sk-...) - used for both Whisper transcription and GPT analysis
+- `OPENAI_MODEL`: OpenAI model to use for analysis (default: gpt-4o-mini)
 - `PORT`: Server port (default: 3000)
 
 ## Getting Zoom API Credentials:
@@ -57,8 +59,9 @@ npm run test:flow          # Test complete webhook flow
 - Participant tracking across meeting lifecycle  
 - Recording and transcript completion handling
 - **Server-to-Server OAuth** for API authentication
-- **Automatic transcript download** from Zoom recordings
-- **VTT format parsing** to extract clean text
+- **Enhanced Audio Transcription** using OpenAI Whisper API for superior accuracy
+- **Automatic audio file download** from Zoom recordings (audio_only or video files)
+- **Speaker-aware transcription** with participant name hints for better identification
 
 ### ✅ AI-Powered Analysis
 - **"Spaces" Focus**: Analyzes gaps between spoken words and intended meaning
@@ -84,9 +87,10 @@ For Vercel deployment:
 
 1. **Meeting starts** → Participants tracked via webhook events
 2. **Recording completes** → System logs recording files availability  
-3. **Transcript ready** → **Main trigger** for analysis:
-   - Downloads transcript from Zoom
-   - Generates AI feedback using OpenAI GPT-4
+3. **Audio transcription ready** → **Main trigger** for analysis:
+   - Downloads high-quality audio files from Zoom recordings
+   - Transcribes audio using OpenAI Whisper API with speaker identification
+   - Generates AI feedback using OpenAI GPT-4o-mini
    - Delivers personalized insights to participants
    - Cleans up meeting data
 

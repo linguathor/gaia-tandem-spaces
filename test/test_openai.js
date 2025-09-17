@@ -78,7 +78,7 @@ ${mockTranscript}`;
 
     console.log('Calling OpenAI API...');
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
