@@ -467,14 +467,23 @@ async function handleTranscriptCompleted(payload) {
     const downloadUrl = transcriptFile.download_url;
     console.log('Found transcript download URL.');
 
-    // 3. Download the transcript file directly (New Theory)
-    console.log('Downloading transcript file directly without a token...');
-    const response = await axios.get(downloadUrl); // No token, no special URL!
+    // 3. Download the transcript file (with passcode)
+    console.log('Downloading transcript file with passcode...');
     
-    const transcriptText = response.data; // This is the raw VTT content
+    // Get the passcode from the payload
+    const passcode = payload.object.recording_play_passcode;
+    
+    // Robustly append the passcode, handling URLs that already have a '?'
+    const separator = downloadUrl.includes('?') ? '&' : '?';
+    const finalDownloadUrl = `${downloadUrl}${separator}pwd=${passcode}`;
+    
+    // Make the request to the final URL
+    const response = await axios.get(finalDownloadUrl);
+    
+    const transcriptText = response.data; // This should now be the VTT content
     console.log('Transcript downloaded successfully!');
     console.log('--- Transcript Text ---');
-    console.log(transcriptText.substring(0, 200) + '...'); // Log the first 200 characters
+    console.log(transcriptText.substring(0, 200) + '...');
 
     // 4. Get participants from payload
     const participants = payload.object.participants || [];
