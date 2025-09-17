@@ -475,7 +475,10 @@ async function handleTranscriptCompleted(payload) {
     
     // Robustly append the passcode, handling URLs that already have a '?'
     const separator = downloadUrl.includes('?') ? '&' : '?';
-    const finalDownloadUrl = `${downloadUrl}${separator}pwd=${passcode}`;
+    const encodedPasscode = encodeURIComponent(passcode);
+    const finalDownloadUrl = `${downloadUrl}${separator}passcode=${encodedPasscode}`;
+    
+    console.log('Final download URL:', finalDownloadUrl.replace(/passcode=[^&]*/, 'passcode=***'));
     
     // Make the request to the final URL
     const response = await axios.get(finalDownloadUrl);
