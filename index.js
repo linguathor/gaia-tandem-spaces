@@ -604,17 +604,77 @@ async function handleTranscriptCompleted(payload) {
     console.log('Request URL length:', finalDownloadUrl.length);
     console.log('Request timestamp:', new Date().toISOString());
     
-    const response = await axios.get(finalDownloadUrl, {
-      timeout: 30000,
-      headers: {
-        'User-Agent': 'Node.js Zoom Webhook Server',
-        'Accept': 'text/vtt, text/plain, */*'
-      },
-      validateStatus: function (status) {
-        console.log('Download response status:', status);
-        return status >= 200 && status < 400;
+    // Try different authentication approaches
+    let response;
+    let lastError;
+    
+    // First attempt: URL with access_token parameter only (remove Bearer header approach)
+    try {
+      console.log('Attempt 1: URL with access_token parameter only');
+      const urlOnlyResponse = await axios.get(finalDownloadUrl, {
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Node.js Zoom Webhook Server',
+          'Accept': 'text/vtt, text/plain, */*'
+        },
+        validateStatus: function (status) {
+          console.log('Download response status (URL method):', status);
+          return status >= 200 && status < 400;
+        }
+      });
+      response = urlOnlyResponse;
+      console.log('SUCCESS: URL with access_token parameter worked!');
+    } catch (error) {
+      console.log('Attempt 1 failed:', error.response?.status, error.response?.data);
+      lastError = error;
+      
+      // Second attempt: Bearer header with passcode in URL (no access_token in URL)
+      try {
+        console.log('Attempt 2: Bearer header with passcode in URL');
+        const urlWithPasscodeOnly = `${transcriptFile.download_url}${passcodeSeparator}pwd=${passcode}`;
+        console.log('Using Bearer header with URL (passcode only):', urlWithPasscodeOnly.replace(/pwd=[^&]*/, 'pwd=***'));
+        
+        const bearerResponse = await axios.get(urlWithPasscodeOnly, {
+          timeout: 30000,
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'Node.js Zoom Webhook Server',
+            'Accept': 'text/vtt, text/plain, */*'
+          },
+          validateStatus: function (status) {
+            console.log('Download response status (Bearer method):', status);
+            return status >= 200 && status < 400;
+          }
+        });
+        response = bearerResponse;
+        console.log('SUCCESS: Bearer header with passcode worked!');
+      } catch (error2) {
+        console.log('Attempt 2 failed:', error2.response?.status, error2.response?.data);
+        
+        // Third attempt: Bearer header only (no passcode, no access_token in URL)
+        try {
+          console.log('Attempt 3: Bearer header only, no extra parameters');
+          const bearerOnlyResponse = await axios.get(transcriptFile.download_url, {
+            timeout: 30000,
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'User-Agent': 'Node.js Zoom Webhook Server',
+              'Accept': 'text/vtt, text/plain, */*'
+            },
+            validateStatus: function (status) {
+              console.log('Download response status (Bearer only):', status);
+              return status >= 200 && status < 400;
+            }
+          });
+          response = bearerOnlyResponse;
+          console.log('SUCCESS: Bearer header only worked!');
+        } catch (error3) {
+          console.log('Attempt 3 failed:', error3.response?.status, error3.response?.data);
+          console.log('All attempts failed, throwing original error');
+          throw lastError; // Throw the first error for consistency
+        }
       }
-    });
+    }
     
     const transcriptText = response.data;
     console.log('=== DOWNLOAD RESPONSE ANALYSIS ===');
