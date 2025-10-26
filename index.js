@@ -546,187 +546,88 @@ async function handleRecordingCompleted(payload) {
  */
 async function handleTranscriptCompleted(payload) {
   try {
-    console.log('=== TRANSCRIPT PROCESSING DEBUG START ===');
-    console.log('Payload keys:', Object.keys(payload));
-    console.log('Object keys:', Object.keys(payload.object || {}));
-    console.log('Meeting UUID:', payload.object?.uuid);
-    console.log('Meeting ID:', payload.object?.id);
-    console.log('Account ID:', payload.object?.account_id);
-    console.log('Recording files count:', payload.object?.recording_files?.length || 0);
-    console.log('Has recording_play_passcode:', !!payload.object?.recording_play_passcode);
-    console.log('Passcode length:', payload.object?.recording_play_passcode?.length || 0);
-    console.log('=== TRANSCRIPT PROCESSING DEBUG END ===');
+    console.log('=== TRANSCRIPT PROCESSING START ===');
+    const meetingUuid = payload.object?.uuid;
+    const meetingId = payload.object?.id;
     
-    console.log('Transcript is ready. Starting download process...');
+    console.log('Meeting UUID:', meetingUuid);
+    console.log('Meeting ID:', meetingId);
     
-    // 1. Find the VTT transcript file in the payload
-    const recordingFiles = payload.object.recording_files;
-    const transcriptFile = recordingFiles.find(file => file.file_type === 'TRANSCRIPT');
-
-    if (!transcriptFile) {
-      console.log('Error: Transcript (VTT) file not found in webhook payload.');
+    if (!meetingUuid) {
+      console.error('Missing meeting UUID in payload');
       return;
     }
     
-    const downloadUrl = transcriptFile.download_url;
-    console.log('Found transcript download URL.');
-
-    // 3. Download the transcript file (with token AND passcode)
-    console.log('Downloading transcript file with token and passcode...');
+    // Instead of using webhook URLs, fetch recordings from Zoom API
+    // This gives us proper download URLs that work with OAuth tokens
+    console.log('Fetching recording details from Zoom API...');
+    const recordingsData = await getZoomRecordings(meetingUuid);
     
-    // Get the passcode and the original download URL
-    const passcode = payload.object.recording_play_passcode;
-    let finalDownloadUrl = transcriptFile.download_url; // Start with the base URL
+    console.log('Recording files from API:', recordingsData.recording_files?.length || 0);
     
-    // Robustly append the passcode
-    const passcodeSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
-    finalDownloadUrl = `${finalDownloadUrl}${passcodeSeparator}pwd=${passcode}`;
+    // Find the transcript file
+    const transcriptFile = recordingsData.recording_files?.find(
+      file => file.file_type === 'TRANSCRIPT' || file.recording_type === 'audio_transcript'
+    );
     
-    // Get the access token (force fresh token)
-    console.log('=== GETTING ACCESS TOKEN ===');
-    const accessToken = await getZoomAccessToken(true);
-    console.log('Received access token length:', accessToken?.length || 0);
-    console.log('Access token first 20 chars:', accessToken?.substring(0, 20) + '...');
-    
-    // Robustly append the access token
-    const tokenSeparator = finalDownloadUrl.includes('?') ? '&' : '?';
-    finalDownloadUrl = `${finalDownloadUrl}${tokenSeparator}access_token=${accessToken}`;
-    
-    console.log('=== DOWNLOAD URL CONSTRUCTION ===');
-    console.log('Original download URL:', transcriptFile.download_url.substring(0, 100) + '...');
-    console.log('Passcode separator:', passcodeSeparator);
-    console.log('Token separator:', tokenSeparator);
-    console.log('Final URL length:', finalDownloadUrl.length);
-    console.log('Final URL (masked):', finalDownloadUrl.replace(/pwd=[^&]*/, 'pwd=***').replace(/access_token=[^&]*/, 'access_token=***'));
-    
-    // Make the request to the final, fully-formed URL
-    console.log('=== MAKING DOWNLOAD REQUEST ===');
-    console.log('Request URL length:', finalDownloadUrl.length);
-    console.log('Request timestamp:', new Date().toISOString());
-    
-    // Try different authentication approaches
-    let response;
-    let lastError;
-    
-    // First attempt: URL with access_token parameter only (remove Bearer header approach)
-    try {
-      console.log('Attempt 1: URL with access_token parameter only');
-      const urlOnlyResponse = await axios.get(finalDownloadUrl, {
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'Node.js Zoom Webhook Server',
-          'Accept': 'text/vtt, text/plain, */*'
-        },
-        validateStatus: function (status) {
-          console.log('Download response status (URL method):', status);
-          return status >= 200 && status < 400;
-        }
-      });
-      response = urlOnlyResponse;
-      console.log('SUCCESS: URL with access_token parameter worked!');
-    } catch (error) {
-      console.log('Attempt 1 failed:', error.response?.status, error.response?.data);
-      lastError = error;
-      
-      // Second attempt: Bearer header with passcode in URL (no access_token in URL)
-      try {
-        console.log('Attempt 2: Bearer header with passcode in URL');
-        const urlWithPasscodeOnly = `${transcriptFile.download_url}${passcodeSeparator}pwd=${passcode}`;
-        console.log('Using Bearer header with URL (passcode only):', urlWithPasscodeOnly.replace(/pwd=[^&]*/, 'pwd=***'));
-        
-        const bearerResponse = await axios.get(urlWithPasscodeOnly, {
-          timeout: 30000,
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'User-Agent': 'Node.js Zoom Webhook Server',
-            'Accept': 'text/vtt, text/plain, */*'
-          },
-          validateStatus: function (status) {
-            console.log('Download response status (Bearer method):', status);
-            return status >= 200 && status < 400;
-          }
-        });
-        response = bearerResponse;
-        console.log('SUCCESS: Bearer header with passcode worked!');
-      } catch (error2) {
-        console.log('Attempt 2 failed:', error2.response?.status, error2.response?.data);
-        
-        // Third attempt: Bearer header only (no passcode, no access_token in URL)
-        try {
-          console.log('Attempt 3: Bearer header only, no extra parameters');
-          const bearerOnlyResponse = await axios.get(transcriptFile.download_url, {
-            timeout: 30000,
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'User-Agent': 'Node.js Zoom Webhook Server',
-              'Accept': 'text/vtt, text/plain, */*'
-            },
-            validateStatus: function (status) {
-              console.log('Download response status (Bearer only):', status);
-              return status >= 200 && status < 400;
-            }
-          });
-          response = bearerOnlyResponse;
-          console.log('SUCCESS: Bearer header only worked!');
-        } catch (error3) {
-          console.log('Attempt 3 failed:', error3.response?.status, error3.response?.data);
-          console.log('All attempts failed, throwing original error');
-          throw lastError; // Throw the first error for consistency
-        }
-      }
+    if (!transcriptFile) {
+      console.log('No transcript file found in API response');
+      console.log('Available file types:', recordingsData.recording_files?.map(f => f.file_type || f.recording_type));
+      return;
     }
+    
+    console.log('Found transcript file:', transcriptFile.file_type || transcriptFile.recording_type);
+    console.log('Download URL from API:', transcriptFile.download_url?.substring(0, 100) + '...');
+    
+    // Get access token
+    const accessToken = await getZoomAccessToken();
+    
+    // Download the transcript using API URL with Bearer token
+    console.log('Downloading transcript from Zoom API URL...');
+    const response = await axios.get(transcriptFile.download_url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': 'Node.js Zoom Webhook Server',
+        'Accept': 'text/vtt, text/plain, */*'
+      },
+      timeout: 30000
+    });
     
     const transcriptText = response.data;
-    console.log('=== DOWNLOAD RESPONSE ANALYSIS ===');
-    console.log('Response status:', response.status);
-    console.log('Response headers keys:', Object.keys(response.headers || {}));
-    console.log('Response content-type:', response.headers?.['content-type']);
-    console.log('Response data type:', typeof transcriptText);
-    console.log('Response data length:', transcriptText?.length || 0);
-    console.log('Response is string:', typeof transcriptText === 'string');
-    console.log('Response starts with WEBVTT:', transcriptText?.startsWith?.('WEBVTT') || false);
-    console.log('Response starts with HTML:', transcriptText?.startsWith?.('<!') || false);
-    console.log('Response contains "passcode":', transcriptText?.includes?.('passcode') || false);
-    console.log('First 200 chars:', transcriptText?.substring(0, 200));
-    console.log('Last 200 chars:', transcriptText?.substring(-200));
-    console.log('=== END DOWNLOAD RESPONSE ANALYSIS ===');
     
-    console.log('Transcript downloaded successfully!');
-    console.log('--- Transcript Text ---');
-    console.log(transcriptText.substring(0, 200) + '...');
+    console.log('✅ Transcript downloaded successfully!');
+    console.log('Content type:', response.headers?.['content-type']);
+    console.log('Transcript length:', transcriptText?.length || 0);
+    console.log('First 200 chars:', transcriptText?.substring(0, 200));
+    
+    // Parse VTT to plain text
+    const parsedTranscript = parseVTTToText(transcriptText);
+    console.log('Parsed transcript:', parsedTranscript.substring(0, 300) + '...');
 
-    // 4. Get participants from payload
-    const participants = payload.object.participants || [];
+    // Get participants from payload or use meeting participants storage
+    const participants = payload.object.participants || 
+                        Array.from(meetingParticipants.get(meetingUuid) || []);
     console.log(`Processing feedback for ${participants.length} participants`);
 
-    // 5. Generate feedback using OpenAI
-    const feedback = await generateFeedback(transcriptText, participants);
+    // Generate feedback using OpenAI
+    const feedback = await generateFeedback(parsedTranscript, participants);
     
-    // 6. Send feedback to participants
+    // Send feedback to participants
     await sendFeedbackToParticipants(feedback, participants);
+    
+    console.log('=== TRANSCRIPT PROCESSING COMPLETE ===');
 
   } catch (error) {
-    console.error('=== TRANSCRIPT PROCESSING ERROR DEBUG ===');
-    console.error('Error type:', error.constructor.name);
+    console.error('=== TRANSCRIPT PROCESSING ERROR ===');
     console.error('Error message:', error.message);
-    console.error('Error code:', error.code);
-    console.error('Error stack first 500 chars:', error.stack?.substring(0, 500));
     
     if (error.response) {
-      console.error('HTTP Response Error Details:');
-      console.error('Status:', error.response.status);
-      console.error('Status text:', error.response.statusText);
-      console.error('Headers:', JSON.stringify(error.response.headers, null, 2));
-      console.error('Data type:', typeof error.response.data);
-      console.error('Data length:', error.response.data?.length || 0);
-      console.error('Data preview:', JSON.stringify(error.response.data)?.substring(0, 500));
+      console.error('HTTP Status:', error.response.status);
+      console.error('Response data:', JSON.stringify(error.response.data)?.substring(0, 500));
     }
-    console.error('=== END TRANSCRIPT PROCESSING ERROR DEBUG ===');
     
-    console.error('Error processing transcript:', error.message);
-    console.error('Error status:', error.response?.status);
-    console.error('Error data:', error.response?.data);
-    console.error('Error headers:', error.response?.headers);
+    console.error('Full error:', error);
+    console.error('=== END TRANSCRIPT PROCESSING ERROR ===');
   }
 }
 

@@ -1,12 +1,34 @@
-# Zoom Webhook Authentication Debugging Session Log
+   # Zoom Webhook Authentication Debugging Session Log
 
-## Current Status (September 30, 2025)
+## Current Status (October 26, 2025)
 
-**MAJOR BREAKTHROUGH**: OAuth authentication is now working correctly! The system successfully obtains access tokens with proper cloud recording scopes instead of marketplace scopes.
+**🎯 SOLUTION FOUND!**
 
-**CURRENT ISSUE**: Despite correct authentication, transcript downloads still return 401 Forbidden with errorCode 300.
+The root cause has been identified: **webhook download URLs require different authentication** than standard Zoom API endpoints.
 
-**NEXT STEP**: Test the newly deployed multi-method authentication fallback system.
+**THE FIX**: Instead of using `webhook_download` URLs from webhook payloads, use the **Zoom Cloud Recording API** (`GET /v2/meetings/{meetingId}/recordings`) to get proper download URLs that work with OAuth Bearer tokens.
+
+## Problem Summary
+
+### What Was Broken ❌
+- **Webhook Download URLs**: The `/rec/webhook_download/...` URLs in webhook payloads don't accept OAuth Bearer tokens
+- **Multiple auth attempts failed**: Tried access_token parameter, Bearer header with passcode, Bearer header alone - all returned 401 Forbidden (errorCode 300)
+- **Root cause**: Webhook URLs have special authentication requirements not compatible with Server-to-Server OAuth
+
+### The Solution ✅
+- **Use Zoom API instead**: Call `GET https://api.zoom.us/v2/meetings/{meetingUuid}/recordings`
+- **API returns proper URLs**: These download URLs work with standard OAuth Bearer tokens
+- **Simple authentication**: Just `Authorization: Bearer {token}` header
+
+## Latest Fix (October 26, 2025)
+
+Modified `handleTranscriptCompleted()` to:
+1. Call `getZoomRecordings(meetingUuid)` to fetch recording details from API
+2. Extract transcript file from API response
+3. Download using API URL with Bearer token authentication
+4. No need for passcodes or URL parameters
+
+**Code changes**: Simplified download logic from 150+ lines of fallback attempts to ~30 lines using proper API endpoint.
 
 ## Problem Summary
 
