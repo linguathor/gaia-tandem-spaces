@@ -797,6 +797,18 @@ Gib dein Feedback im angegebenen JSON-Format. Sei konstruktiv, ermutigend und ko
       const feedback = JSON.parse(content);
       console.log('✅ Successfully generated German language feedback with OpenAI');
       console.log('Participants analyzed:', Object.keys(feedback.participants || {}).length);
+      
+      // Log detailed feedback for each participant
+      for (const [name, data] of Object.entries(feedback.participants || {})) {
+        console.log(`\n📊 Feedback for ${name}:`);
+        console.log(`  Level: ${data.level}`);
+        console.log(`  Strengths: ${data.strengths?.join(', ')}`);
+        console.log(`  Grammar Score: ${data.grammar?.score}/10 - ${data.grammar?.feedback}`);
+        console.log(`  Vocabulary Score: ${data.vocabulary?.score}/10 - ${data.vocabulary?.feedback}`);
+        console.log(`  Fluency Score: ${data.fluency?.score}/10 - ${data.fluency?.feedback}`);
+        console.log(`  Improvements: ${data.improvements?.join(' | ')}`);
+      }
+      
       return feedback;
     } catch (parseError) {
       console.error('Failed to parse OpenAI response as JSON:', parseError.message);
@@ -845,11 +857,14 @@ Gib dein Feedback im angegebenen JSON-Format. Sei konstruktiv, ermutigend und ko
  * Send feedback to participants via email/Telegram
  */
 async function sendFeedbackToParticipants(feedback, participants) {
+  console.log('\n=== COMPLETE FEEDBACK DETAILS ===');
+  console.log(JSON.stringify(feedback, null, 2));
+  console.log('=== END FEEDBACK DETAILS ===\n');
+  
   console.log('TODO: Send feedback to participants');
-  console.log('Feedback:', feedback);
   
   for (const participant of participants) {
-    console.log(`Sending feedback to ${participant.name} (${participant.email || 'no email'})`);
+    console.log(`📧 Sending feedback to ${participant.name} (${participant.email || 'no email'})`);
     
     // TODO: Implement email/Telegram delivery
     // if (participant.email) {
