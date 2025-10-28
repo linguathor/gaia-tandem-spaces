@@ -684,59 +684,100 @@ async function generateFeedback(transcript, participants) {
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
     console.log('OpenAI API key not configured, returning mock feedback');
     return {
-      summary: 'Mock meeting summary - OpenAI API key not configured',
-      insights: ['Please configure OPENAI_API_KEY in your environment'],
-      actionItems: ['Set up OpenAI API key', 'Redeploy the application']
+      overallAssessment: 'Mock-Feedback - OpenAI API-Schlüssel nicht konfiguriert',
+      participants: {
+        'Beispiel-Teilnehmer': {
+          level: 'B1',
+          strengths: ['Gute Aussprache', 'Aktive Teilnahme'],
+          grammar: { score: 7, feedback: 'Bitte API-Schlüssel konfigurieren', examples: [] },
+          vocabulary: { score: 7, feedback: 'Bitte API-Schlüssel konfigurieren', suggestions: [] },
+          fluency: { score: 7, feedback: 'Bitte API-Schlüssel konfigurieren' },
+          improvements: ['OPENAI_API_KEY in .env setzen'],
+          resources: ['Application neu deployen']
+        }
+      },
+      conversationQuality: { score: 0, feedback: 'API nicht konfiguriert' },
+      nextSteps: ['OpenAI API-Schlüssel einrichten']
     };
   }
   
   try {
     const participantNames = participants.map(p => p.name).join(', ');
     
-    const systemPrompt = `You are an expert meeting analyst specializing in "Spaces" - the gaps between what people say and what they really mean in professional meetings. Your role is to provide actionable feedback that helps participants improve their communication and collaboration.
+    const systemPrompt = `Du bist ein erfahrener Deutschlehrer und Sprachcoach, spezialisiert auf konstruktives Feedback für Deutschlernende in Tandem-Gesprächen. Deine Aufgabe ist es, personalisiertes, motivierendes und praktisches Feedback zu geben, das den Lernenden hilft, ihre Deutschkenntnisse zu verbessern.
 
-Analyze the meeting transcript and provide insights in these key areas:
+Analysiere das Transkript eines Tandem-Gesprächs und bewerte jeden Teilnehmer in diesen Bereichen:
 
-1. **Communication Patterns**: How effectively did participants communicate? Look for:
-   - Unclear messaging or assumptions
-   - Speaking over each other or interruptions
-   - Engagement levels and participation balance
-   - Use of jargon that might exclude others
+1. **Grammatik und Satzbau**: 
+   - Korrektheit der Grammatik (Zeitformen, Fälle, Wortstellung)
+   - Satzstruktur und Komplexität
+   - Häufige Fehler und Muster
 
-2. **Hidden Dynamics**: Identify the "spaces" between words:
-   - Unspoken concerns or hesitations
-   - Power dynamics affecting participation
-   - Emotional undertones (frustration, enthusiasm, uncertainty)
-   - What wasn't said but was probably thought
+2. **Wortschatz und Ausdrucksfähigkeit**:
+   - Vielfalt und Angemessenheit des Wortschatzes
+   - Idiomatische Ausdrücke und Redewendungen
+   - Fachspezifisches Vokabular
+   - Füllwörter und Satzanfänge
 
-3. **Collaboration Effectiveness**: Assess how well the team worked together:
-   - Decision-making process and clarity
-   - How well ideas were built upon
-   - Conflict resolution and handling of disagreements
-   - Inclusivity and psychological safety
+3. **Kommunikative Kompetenz**:
+   - Flüssigkeit und Natürlichkeit der Sprache
+   - Gesprächsführung und Interaktion
+   - Verständlichkeit und Klarheit
+   - Fähigkeit, komplexe Gedanken auszudrücken
 
-4. **Actionable Improvements**: Provide specific, implementable suggestions:
-   - Communication techniques for better clarity
-   - Process improvements for future meetings
-   - Individual feedback for key participants
-   - Ways to address any underlying tensions
+4. **Stärken und Verbesserungspotential**:
+   - Was macht der Lernende besonders gut?
+   - Konkrete Verbesserungsvorschläge mit Beispielen
+   - Übungen oder Lernressourcen für spezifische Schwächen
 
-Format your response as JSON with these fields:
-- summary: A brief overview of the meeting's effectiveness
-- communicationInsights: Array of observations about communication patterns
-- hiddenDynamics: Array of insights about unspoken elements
-- collaborationScore: Number from 1-10 rating team collaboration
-- actionItems: Array of specific, actionable recommendations
-- individualFeedback: Object with participant names as keys and personalized feedback as values
+WICHTIG: 
+- Sei konstruktiv und ermutigend
+- Gib konkrete Beispiele aus dem Transkript
+- Biete praktische Tipps zur Verbesserung
+- Berücksichtige das Sprachniveau des Lernenden
+- Feiere Fortschritte und gute Verwendungen
 
-Keep insights constructive and actionable. Focus on helping the team improve their "spaces" - the quality of interaction beyond just the words spoken.`;
+Formatiere deine Antwort als reines JSON-Objekt (KEIN Markdown, kein \`\`\`json) mit folgenden Feldern:
 
-    const userPrompt = `Please analyze this meeting transcript involving participants: ${participantNames}
+{
+  "overallAssessment": "Gesamteinschätzung des Gesprächs (2-3 Sätze)",
+  "participants": {
+    "Teilnehmername": {
+      "level": "Geschätztes Sprachniveau (A1-C2)",
+      "strengths": ["Stärke 1", "Stärke 2", "Stärke 3"],
+      "grammar": {
+        "score": 1-10,
+        "feedback": "Detailliertes Feedback zur Grammatik",
+        "examples": ["Beispiel aus Transkript mit Korrektur"]
+      },
+      "vocabulary": {
+        "score": 1-10,
+        "feedback": "Feedback zum Wortschatz",
+        "suggestions": ["Alternatives Wort/Ausdruck"]
+      },
+      "fluency": {
+        "score": 1-10,
+        "feedback": "Feedback zur Sprachflüssigkeit"
+      },
+      "improvements": ["Konkreter Tipp 1", "Konkreter Tipp 2"],
+      "resources": ["Empfohlene Übung oder Ressource"]
+    }
+  },
+  "conversationQuality": {
+    "score": 1-10,
+    "feedback": "Bewertung der Gesprächsqualität insgesamt"
+  },
+  "nextSteps": ["Gemeinsame Übung oder Thema für nächstes Tandem"]
+}
 
-Transcript:
+Antworte NUR mit dem JSON-Objekt, ohne zusätzlichen Text oder Markdown-Formatierung.`;
+
+    const userPrompt = `Analysiere bitte dieses deutsche Tandem-Gespräch mit folgenden Teilnehmern: ${participantNames}
+
+Transkript:
 ${transcript}
 
-Provide your analysis in the requested JSON format, focusing on the "spaces" between what was said and what was meant.`;
+Gib dein Feedback im angegebenen JSON-Format. Sei konstruktiv, ermutigend und konkret mit Beispielen aus dem Transkript.`;
 
     const response = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -745,37 +786,57 @@ Provide your analysis in the requested JSON format, focusing on the "spaces" bet
         { role: "user", content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 2000
+      max_tokens: 3000,
+      response_format: { type: "json_object" }
     });
 
     const content = response.choices[0].message.content;
     
     try {
-      // Try to parse as JSON
+      // Parse the JSON response
       const feedback = JSON.parse(content);
-      console.log('Successfully generated feedback with OpenAI');
+      console.log('✅ Successfully generated German language feedback with OpenAI');
+      console.log('Participants analyzed:', Object.keys(feedback.participants || {}).length);
       return feedback;
     } catch (parseError) {
-      console.log('Failed to parse OpenAI response as JSON, returning structured fallback');
+      console.error('Failed to parse OpenAI response as JSON:', parseError.message);
+      console.error('Response content:', content.substring(0, 500));
+      
+      // Try to extract JSON from markdown if present
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        try {
+          const feedback = JSON.parse(jsonMatch[1]);
+          console.log('✅ Extracted JSON from markdown wrapper');
+          return feedback;
+        } catch (e) {
+          console.error('Could not parse extracted JSON');
+        }
+      }
+      
       return {
-        summary: content.substring(0, 200) + '...',
-        communicationInsights: ['OpenAI response was not in expected JSON format'],
-        hiddenDynamics: ['Please check the system prompt configuration'],
-        collaborationScore: 7,
-        actionItems: ['Review and fix the feedback generation prompt'],
-        individualFeedback: {}
+        overallAssessment: 'Fehler beim Generieren des Feedbacks - bitte Systemkonfiguration überprüfen',
+        participants: {},
+        conversationQuality: { score: 0, feedback: 'Technischer Fehler' },
+        nextSteps: ['OpenAI API-Antwort überprüfen', 'Prompt-Format validieren']
       };
     }
     
   } catch (error) {
-    console.error('Error calling OpenAI API:', error);
+    console.error('Error calling OpenAI API:', error.message);
+    console.error('Error details:', error.response?.data || error);
     return {
-      summary: 'Error generating feedback with OpenAI',
-      communicationInsights: [`API Error: ${error.message}`],
-      hiddenDynamics: ['Could not analyze meeting dynamics due to API error'],
-      collaborationScore: 0,
-      actionItems: ['Fix OpenAI API configuration', 'Check API key and billing'],
-      individualFeedback: {}
+      overallAssessment: 'Fehler beim Generieren des Feedbacks mit OpenAI',
+      participants: {},
+      conversationQuality: {
+        score: 0,
+        feedback: `API-Fehler: ${error.message}`
+      },
+      nextSteps: [
+        'OpenAI API-Konfiguration überprüfen',
+        'API-Schlüssel und Abrechnung prüfen',
+        'Netzwerkverbindung testen'
+      ]
     };
   }
 }

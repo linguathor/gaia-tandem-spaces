@@ -1,6 +1,6 @@
-# Zoom Feedback Backend - "Spaces" Meeting Analysis
+# Zoom Feedback Backend - German Tandem Learning Assistant
 
-Advanced Express server that processes Zoom webhook events and generates AI-powered feedback focusing on the "spaces" between what people say and what they mean in meetings.
+Advanced Express server that processes Zoom webhook events and generates AI-powered feedback for German language learners in tandem conversations. Provides personalized analysis of grammar, vocabulary, fluency, and communication skills.
 
 ## Quick start (PowerShell):
 
@@ -63,12 +63,14 @@ npm run test:flow          # Test complete webhook flow
 - **Automatic audio file download** from Zoom recordings (audio_only or video files)
 - **Speaker-aware transcription** with participant name hints for better identification
 
-### ✅ AI-Powered Analysis
-- **"Spaces" Focus**: Analyzes gaps between spoken words and intended meaning
-- **Communication Patterns**: Identifies unclear messaging, interruptions, engagement levels
-- **Hidden Dynamics**: Uncovers unspoken concerns, power dynamics, emotional undertones
-- **Collaboration Assessment**: Rates team effectiveness and decision-making processes
-- **Actionable Insights**: Provides specific, implementable recommendations
+### ✅ AI-Powered German Language Analysis
+- **Personalized Feedback**: Individual analysis for each speaker's German proficiency
+- **Grammar Assessment**: Detailed evaluation of grammar, sentence structure, and common errors
+- **Vocabulary Insights**: Analysis of word choice, idiomatic expressions, and register
+- **Fluency Evaluation**: Assessment of speaking flow, naturalness, and communication effectiveness
+- **Level Estimation**: Automatic CEFR level estimation (A1-C2)
+- **Actionable Improvements**: Specific, practical tips with examples from the conversation
+- **Learning Resources**: Customized exercise and resource recommendations
 
 ### 🚧 Coming Next
 - Email/Telegram delivery system
